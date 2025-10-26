@@ -756,8 +756,8 @@ class MRC_API_Client {
     /**
      * Mask license key for safe display in error messages
      *
-     * Converts: MRC-12345678-ABCD-EFGH
-     * To: MRC-****-****-EFGH
+     * Converts: MRC-12345678-ABCDEFGH-12345678
+     * To: MRC-****-****-5678
      *
      * @param string $license_key Full license key
      * @return string Masked license key

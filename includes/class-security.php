@@ -266,8 +266,8 @@ class MRC_Security {
      * @return bool True if valid format
      */
     public static function validate_license_key_format($license_key) {
-        // Format: MRC-XXXXXXXX-XXXX-XXXX
-        return preg_match('/^MRC-[A-Z0-9]{8}-[A-Z0-9]{4}-[A-Z0-9]{4}$/i', $license_key);
+        // Format: MRC-XXXXXXXX-XXXXXXXX-XXXXXXXX
+        return preg_match('/^MRC-[A-Z0-9]{8}-[A-Z0-9]{8}-[A-Z0-9]{8}$/i', $license_key);
     }
 
     /**

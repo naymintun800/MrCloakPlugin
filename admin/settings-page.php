@@ -10,7 +10,7 @@ if (isset($_POST['mrc_activate_license']) && check_admin_referer('mrc_settings')
     if (empty($license_key)) {
         echo '<div class="notice notice-error"><p>Please enter a license key.</p></div>';
     } elseif (!MRC_Security::validate_license_key_format($license_key)) {
-        echo '<div class="notice notice-error"><p>Invalid license key format. Expected format: MRC-XXXXXXXX-XXXX-XXXX</p></div>';
+        echo '<div class="notice notice-error"><p>Invalid license key format. Expected format: MRC-XXXXXXXX-XXXXXXXX-XXXXXXXX</p></div>';
     } else {
         $api_client = MRC_API_Client::get_instance();
         $domain = parse_url(home_url(), PHP_URL_HOST);
@@ -157,12 +157,12 @@ $subscription_info = get_option('mrc_subscription_info', array());
                                    id="mrc_license_key"
                                    name="mrc_license_key"
                                    class="regular-text"
-                                   placeholder="MRC-XXXXXXXX-XXXX-XXXX"
-                                   pattern="MRC-[A-Z0-9]{8}-[A-Z0-9]{4}-[A-Z0-9]{4}"
+                                   placeholder="MRC-XXXXXXXX-XXXXXXXX-XXXXXXXX"
+                                   pattern="MRC-[A-Z0-9]{8}-[A-Z0-9]{8}-[A-Z0-9]{8}"
                                    required />
                             <p class="description">
-                                Format: MRC-XXXXXXXX-XXXX-XXXX<br>
-                                Don't have a license? <a href="https://mrcloak.com/pricing" target="_blank">Get one here</a>
+                                Format: MRC-XXXXXXXX-XXXXXXXX-XXXXXXXX<br>
+                                Don't have a license? <a href="https://mrcloak.com" target="_blank">Get one here</a>
                             </p>
                         </td>
                     </tr>
