@@ -1,0 +1,419 @@
+/* Facebook Bot Detector Admin Styles */
+
+.fbd-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin: 20px 0;
+}
+
+.fbd-stat-card {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 20px;
+    text-align: center;
+    box-shadow: 0 1px 1px rgba(0,0,0,.04);
+}
+
+.fbd-stat-card h3 {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #50575e;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.fbd-stat-number {
+    display: block;
+    font-size: 32px;
+    font-weight: 600;
+    color: #1d2327;
+    line-height: 1;
+}
+
+.fbd-confidence-badge {
+    padding: 4px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+    display: inline-block;
+}
+
+.fbd-confidence-badge.confidence-high {
+    background-color: #00a32a;
+}
+
+.fbd-confidence-badge.confidence-medium {
+    background-color: #dba617;
+}
+
+.fbd-confidence-badge.confidence-low {
+    background-color: #d63638;
+}
+
+.fbd-status {
+    padding: 4px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: 600;
+    display: inline-block;
+}
+
+.fbd-status.verified {
+    background-color: #d1e7dd;
+    color: #0f5132;
+    border: 1px solid #badbcc;
+}
+
+.fbd-status.pending {
+    background-color: #fff3cd;
+    color: #664d03;
+    border: 1px solid #ffecb5;
+}
+
+.fbd-detection-method {
+    font-size: 11px;
+    color: #50575e;
+    background-color: #f6f7f7;
+    padding: 2px 6px;
+    border-radius: 2px;
+    display: inline-block;
+}
+
+.fbd-user-agent,
+.fbd-request-uri {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    color: #50575e;
+}
+
+.fbd-filters {
+    margin: 30px 0 20px 0;
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 20px;
+}
+
+.fbd-filter-form {
+    margin-top: 15px;
+}
+
+.fbd-filter-row {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.fbd-filter-row input[type="text"],
+.fbd-filter-row input[type="date"],
+.fbd-filter-row select {
+    margin: 0;
+}
+
+.fbd-logs-table {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+}
+
+.fbd-logs-table .wp-list-table {
+    border: none;
+    border-radius: 0;
+}
+
+.fbd-logs-table .wp-list-table th,
+.fbd-logs-table .wp-list-table td {
+    padding: 12px 10px;
+}
+
+.fbd-logs-table .wp-list-table tbody tr:hover {
+    background-color: #f6f7f7;
+}
+
+.fbd-top-ips {
+    margin: 30px 0;
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 20px;
+}
+
+.fbd-top-ips h2 {
+    margin-top: 0;
+}
+
+.fbd-info-panel {
+    background: #f0f6fc;
+    border: 1px solid #c6e0f5;
+    border-radius: 4px;
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.fbd-info-panel h3 {
+    margin-top: 0;
+    color: #0073aa;
+}
+
+.fbd-info-panel ul {
+    margin: 10px 0;
+}
+
+.fbd-info-panel code {
+    background: #fff;
+    padding: 2px 6px;
+    border-radius: 3px;
+    border: 1px solid #ddd;
+}
+
+.fbd-export-summary {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.fbd-export-summary ul {
+    columns: 2;
+    column-gap: 40px;
+}
+
+.fbd-export-form {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.fbd-export-actions {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid #ddd;
+}
+
+.fbd-export-preview {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.fbd-export-help {
+    background: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.fbd-export-help h3 {
+    color: #23282d;
+    margin-top: 25px;
+}
+
+.fbd-export-help h3:first-of-type {
+    margin-top: 0;
+}
+
+/* Responsive Design */
+@media screen and (max-width: 782px) {
+    .fbd-stats-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .fbd-filter-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .fbd-filter-row > * {
+        margin-bottom: 10px;
+    }
+    
+    .fbd-export-summary ul {
+        columns: 1;
+    }
+}
+
+/* Form Styling Improvements */
+.form-table th {
+    width: 200px;
+    padding-left: 10px;
+}
+
+.form-table td {
+    padding-left: 10px;
+}
+
+input[type="range"] {
+    width: 200px;
+    margin-right: 10px;
+}
+
+output {
+    font-weight: 600;
+    color: #0073aa;
+}
+
+/* Loading States */
+.fbd-loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.fbd-loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    margin: -10px 0 0 -10px;
+    border: 2px solid #ccc;
+    border-top-color: #0073aa;
+    border-radius: 50%;
+    animation: fbd-spin 1s linear infinite;
+}
+
+@keyframes fbd-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+    .fbd-stat-card {
+        background: #1e1e1e;
+        border-color: #3c3c3c;
+        color: #fff;
+    }
+    
+    .fbd-stat-card h3 {
+        color: #ccc;
+    }
+    
+    .fbd-stat-number {
+        color: #fff;
+    }
+    
+    .fbd-info-panel {
+        background: #2c3e50;
+        border-color: #34495e;
+        color: #ecf0f1;
+    }
+    
+    .fbd-info-panel h3 {
+        color: #3498db;
+    }
+}
+
+/* Whitelist Type Badges */
+.fbd-whitelist-type {
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    display: inline-block;
+}
+
+.fbd-whitelist-type.type-default {
+    background-color: #e1f5fe;
+    color: #0277bd;
+    border: 1px solid #81d4fa;
+}
+
+.fbd-whitelist-type.type-manual {
+    background-color: #f3e5f5;
+    color: #7b1fa2;
+    border: 1px solid #ce93d8;
+}
+
+.fbd-whitelist-type.type-auto_detected {
+    background-color: #e8f5e8;
+    color: #2e7d32;
+    border: 1px solid #a5d6a7;
+}
+
+/* Redirect Status */
+.fbd-redirect-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.fbd-redirect-status::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.fbd-redirect-status.enabled::before {
+    background-color: #00a32a;
+}
+
+.fbd-redirect-status.disabled::before {
+    background-color: #d63638;
+}
+
+/* Whitelist Form */
+.fbd-whitelist-form {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.fbd-import-section,
+.fbd-export-section {
+    background: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 15px;
+    margin: 10px 0;
+}
+
+.fbd-recent-auto {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.fbd-log-filters {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 15px;
+    margin: 15px 0;
+}
+
+/* Print Styles */
+@media print {
+    .fbd-stats-grid {
+        grid-template-columns: repeat(5, 1fr);
+    }
+    
+    .fbd-export-form,
+    .fbd-export-actions,
+    .fbd-import-section {
+        display: none;
+    }
+}
