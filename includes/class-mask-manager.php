@@ -40,11 +40,17 @@ class MRC_Mask_Manager {
             $license_key = MRC_Security::decrypt(get_option('mrc_license_key'));
 
             if ($license_key) {
-                $cached_masks = $api_client->get_masks($license_key);
+                $response = $api_client->get_masks($license_key);
+
+                // Only use response if it's not an error
+                if (is_array($response) && !isset($response['error'])) {
+                    $cached_masks = $response;
+                }
             }
         }
 
-        if (empty($cached_masks)) {
+        // Ensure cached_masks is an array
+        if (!is_array($cached_masks) || empty($cached_masks)) {
             return null;
         }
 
@@ -74,11 +80,22 @@ class MRC_Mask_Manager {
             $license_key = MRC_Security::decrypt(get_option('mrc_license_key'));
 
             if ($license_key) {
-                $cached_masks = $api_client->get_masks($license_key);
+                $response = $api_client->get_masks($license_key);
+
+                // Only update cache if we got valid masks (not an error)
+                if (is_array($response) && !isset($response['error'])) {
+                    $cached_masks = $response;
+                } else {
+                    // Log error but keep using cached masks
+                    if (isset($response['error'])) {
+                        error_log('Mr. Cloak: Failed to fetch masks - ' . $response['error']);
+                    }
+                }
             }
         }
 
-        return $cached_masks;
+        // Ensure we always return an array, even if empty
+        return is_array($cached_masks) ? $cached_masks : array();
     }
 
     /**
@@ -95,16 +112,16 @@ class MRC_Mask_Manager {
 
             if ($bot_decision['should_block']) {
                 return array(
-                    'visitor_type' => 'bot',
+                    'visitor_type' => 'filtered',
                     'blocked_reason' => $bot_decision['reason'],
-                    'action' => 'block'
+                    'action' => 'stay_on_page'
                 );
             } else {
-                // Bot is whitelisted or SEO bot
+                // Bot is whitelisted or SEO bot - stays on page
                 return array(
-                    'visitor_type' => 'bot',
+                    'visitor_type' => 'bot_whitelisted',
                     'blocked_reason' => null,
-                    'action' => 'allow_safe_page'
+                    'action' => 'stay_on_page'
                 );
             }
         }
@@ -155,9 +172,9 @@ class MRC_Mask_Manager {
         // Determine visitor type and action
         if ($blocked_reason) {
             return array(
-                'visitor_type' => 'blocked',
+                'visitor_type' => 'filtered',
                 'blocked_reason' => $blocked_reason,
-                'action' => 'block'
+                'action' => 'stay_on_page'
             );
         } else {
             return array(
@@ -173,18 +190,16 @@ class MRC_Mask_Manager {
      *
      * @param string $ip_address IP address
      * @param string $user_agent User agent
+     * @param array $mask Mask configuration to use for filtering
      * @return array Processing result with 'action', 'redirect_url', 'visitor_type', etc.
      */
-    public function process_visitor($ip_address, $user_agent) {
-        // Get active mask
-        $mask = $this->get_active_mask();
-
+    public function process_visitor($ip_address, $user_agent, $mask) {
         if (!$mask) {
-            // No active mask - show safe page
+            // No mask provided - do nothing (visitor stays on page)
             return array(
-                'action' => 'safe_page',
+                'action' => 'none',
                 'visitor_type' => 'unknown',
-                'blocked_reason' => 'no_active_mask',
+                'blocked_reason' => 'no_mask',
                 'mask_id' => null
             );
         }
@@ -281,72 +296,139 @@ class MRC_Mask_Manager {
     }
 
     /**
-     * Get safe/maintenance page HTML
+     * Get all mask configurations (API masks + local settings)
      *
-     * @return string HTML content
+     * @return array Array of mask configurations
      */
-    public function get_safe_page_html() {
-        $custom_html = get_option('mrc_safe_page_html', '');
+    public function get_mask_configs() {
+        $api_masks = $this->get_all_masks();
+        $local_configs = get_option('mrc_mask_configs', array());
 
-        if (!empty($custom_html)) {
-            return $custom_html;
+        // Merge API masks with local configurations
+        $masks_with_config = array();
+
+        foreach ($api_masks as $mask) {
+            $mask_id = $mask['id'];
+            $mask['local_config'] = isset($local_configs[$mask_id]) ? $local_configs[$mask_id] : array(
+                'landing_page_id' => null,
+                'landing_page_type' => 'home',
+                'enabled' => false
+            );
+            $masks_with_config[] = $mask;
         }
 
-        // Default safe page
-        return '<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="robots" content="noindex, nofollow">
-    <title>Please Wait</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: #fff;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            padding: 20px;
+        return $masks_with_config;
+    }
+
+    /**
+     * Save mask configuration (landing page and enabled status)
+     *
+     * @param string $mask_id Mask UUID
+     * @param array $config Configuration array
+     * @return bool Success
+     */
+    public function save_mask_config($mask_id, $config) {
+        $local_configs = get_option('mrc_mask_configs', array());
+
+        $local_configs[$mask_id] = array(
+            'landing_page_id' => isset($config['landing_page_id']) ? intval($config['landing_page_id']) : null,
+            'landing_page_type' => isset($config['landing_page_type']) ? $config['landing_page_type'] : 'home',
+            'enabled' => isset($config['enabled']) ? (bool)$config['enabled'] : false
+        );
+
+        return update_option('mrc_mask_configs', $local_configs);
+    }
+
+    /**
+     * Get mask configuration for a specific page/post
+     *
+     * @param int $page_id WordPress page/post ID
+     * @param bool $is_home Whether this is the home page
+     * @return array|null Mask + config if found, null otherwise
+     */
+    public function get_mask_for_page($page_id, $is_home = false) {
+        $mask_configs = $this->get_mask_configs();
+
+        foreach ($mask_configs as $mask) {
+            $config = $mask['local_config'];
+
+            // Skip disabled masks
+            if (!$config['enabled']) {
+                continue;
+            }
+
+            // Check if this mask applies to this page
+            if ($config['landing_page_type'] === 'home' && $is_home) {
+                return $mask;
+            }
+
+            if ($config['landing_page_id'] == $page_id) {
+                return $mask;
+            }
         }
-        .container {
-            text-align: center;
-            max-width: 500px;
+
+        return null;
+    }
+
+    /**
+     * Get all enabled masks
+     *
+     * @return array Array of enabled masks with configs
+     */
+    public function get_enabled_masks() {
+        $mask_configs = $this->get_mask_configs();
+
+        return array_filter($mask_configs, function($mask) {
+            return isset($mask['local_config']['enabled']) && $mask['local_config']['enabled'];
+        });
+    }
+
+    /**
+     * Toggle mask enabled status
+     *
+     * @param string $mask_id Mask UUID
+     * @param bool $enabled Whether to enable or disable
+     * @return bool Success
+     */
+    public function toggle_mask($mask_id, $enabled) {
+        $local_configs = get_option('mrc_mask_configs', array());
+
+        if (!isset($local_configs[$mask_id])) {
+            $local_configs[$mask_id] = array(
+                'landing_page_id' => null,
+                'landing_page_type' => 'home',
+                'enabled' => $enabled
+            );
+        } else {
+            $local_configs[$mask_id]['enabled'] = $enabled;
         }
-        h1 {
-            font-size: 3rem;
-            margin-bottom: 1rem;
-            font-weight: 300;
+
+        return update_option('mrc_mask_configs', $local_configs);
+    }
+
+    /**
+     * Get simple stats (whitelisted and filtered counts)
+     *
+     * @return array Stats array
+     */
+    public function get_simple_stats() {
+        $queue = get_option('mrc_analytics_queue', array());
+
+        $whitelisted = 0;
+        $filtered = 0;
+
+        foreach ($queue as $event) {
+            if ($event['visitor_type'] === 'whitelisted') {
+                $whitelisted++;
+            } else {
+                $filtered++;
+            }
         }
-        p {
-            font-size: 1.2rem;
-            opacity: 0.9;
-            line-height: 1.6;
-        }
-        .loader {
-            margin: 2rem auto;
-            width: 50px;
-            height: 50px;
-            border: 4px solid rgba(255, 255, 255, 0.3);
-            border-top-color: #fff;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Please Wait</h1>
-        <div class="loader"></div>
-        <p>We\'re preparing your experience...</p>
-    </div>
-</body>
-</html>';
+
+        return array(
+            'whitelisted' => $whitelisted,
+            'filtered' => $filtered,
+            'total' => count($queue)
+        );
     }
 }

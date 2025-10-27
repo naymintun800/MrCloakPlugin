@@ -41,7 +41,7 @@ The Mr. Cloak WordPress plugin communicates with the SaaS backend to:
 - ✅ Maintain active session with rolling JWT tokens
 
 **Key Concepts:**
-- **License Key**: Format `MRC-XXXXXXXX-XXXX-XXXX` - Unique per user account
+- **License Key**: Format `MRC-XXXXXXXX-XXXXXXXX-XXXXXXXX` - Unique per user account
 - **Access Token**: Short-lived JWT token (60 minutes) for authenticated requests
 - **Rolling Tokens**: New token issued with each heartbeat to maintain session
 - **Grace Period**: 48 hours after trial/payment expiry before service stops
@@ -264,7 +264,7 @@ Content-Type: application/json
 **Body:**
 ```json
 {
-  "licenseKey": "MRC-12345678-ABCD-EFGH",
+  "licenseKey": "MRC-12345678-ABCDEFGH-12345678",
   "domain": "example.com",
   "pluginVersion": "1.0.0"
 }
@@ -272,7 +272,7 @@ Content-Type: application/json
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `licenseKey` | string | Yes | User's license key (format: `MRC-XXXXXXXX-XXXX-XXXX`) |
+| `licenseKey` | string | Yes | User's license key (format: `MRC-XXXXXXXX-XXXXXXXX-XXXXXXXX`) |
 | `domain` | string | Yes | Domain where plugin is installed (e.g., `example.com`) |
 | `pluginVersion` | string | No | Plugin version for tracking (e.g., `1.0.0`) |
 
@@ -280,7 +280,7 @@ Content-Type: application/json
 
 ```json
 {
-  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsaWMiOiJNUkMtMTIzNDU2NzgtQUJDRC1FRkdIIiwiZG9tIjoiZXhhbXBsZS5jb20iLCJ1aWQiOiJ1c2VyLXV1aWQiLCJ2ZXIiOiIxLjAuMCIsImlhdCI6MTczMDEyMzQ1NiwiZXhwIjoxNzMwMTI3MDU2fQ.signature",
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsaWMiOiJNUkMtMTIzNDU2NzgtQUJDREVGR0gtMTIzNDU2NzgiLCJkb20iOiJleGFtcGxlLmNvbSIsInVpZCI6InVzZXItdXVpZCIsInZlciI6IjEuMC4wIiwiaWF0IjoxNzMwMTIzNDU2LCJleHAiOjE3MzAxMjcwNTZ9.signature",
   "policy": {
     "status": "trialing",
     "trialEndsAt": "2025-11-01T12:00:00.000Z",
@@ -588,7 +588,7 @@ dashboard under Settings > Domain Security > Revoked Domains.
 
 **Query Parameters:**
 ```
-?license_key=MRC-12345678-ABCD-EFGH
+?license_key=MRC-12345678-ABCDEFGH-12345678
 ```
 
 | Parameter | Type | Required | Description |
@@ -597,7 +597,7 @@ dashboard under Settings > Domain Security > Revoked Domains.
 
 **Example:**
 ```
-GET /api/plugin/masks?license_key=MRC-12345678-ABCD-EFGH
+GET /api/plugin/masks?license_key=MRC-12345678-ABCDEFGH-12345678
 ```
 
 #### Success Response (200 OK)
@@ -731,7 +731,7 @@ Content-Type: application/json
 **Body:**
 ```json
 {
-  "license_key": "MRC-12345678-ABCD-EFGH",
+  "license_key": "MRC-12345678-ABCDEFGH-12345678",
   "events": [
     {
       "mask_id": "mask-uuid-1",
@@ -868,7 +868,7 @@ Content-Type: application/json
 
 **Query Parameters:**
 ```
-?license_key=MRC-12345678-ABCD-EFGH
+?license_key=MRC-12345678-ABCDEFGH-12345678
 ```
 
 | Parameter | Type | Required | Description |
@@ -877,7 +877,7 @@ Content-Type: application/json
 
 **Example:**
 ```
-GET /api/plugin/subscription?license_key=MRC-12345678-ABCD-EFGH
+GET /api/plugin/subscription?license_key=MRC-12345678-ABCDEFGH-12345678
 ```
 
 #### Success Response (200 OK)
@@ -886,7 +886,7 @@ GET /api/plugin/subscription?license_key=MRC-12345678-ABCD-EFGH
 ```json
 {
   "license": {
-    "key": "MRC-12345678-ABCD-EFGH",
+    "key": "MRC-12345678-ABCDEFGH-12345678",
     "status": "active"
   },
   "subscription": {
@@ -913,7 +913,7 @@ GET /api/plugin/subscription?license_key=MRC-12345678-ABCD-EFGH
 ```json
 {
   "license": {
-    "key": "MRC-12345678-ABCD-EFGH",
+    "key": "MRC-12345678-ABCDEFGH-12345678",
     "status": "active"
   },
   "subscription": {

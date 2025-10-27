@@ -21,6 +21,12 @@ class MRC_Admin {
         add_action('admin_menu', array($this, 'add_admin_menu'));
         add_action('admin_notices', array($this, 'show_domain_revoked_notice'));
         add_action('wp_ajax_mrc_dismiss_revoked_notice', array($this, 'dismiss_revoked_notice'));
+
+        // Initialize notification system
+        MRC_Notifications::get_instance();
+
+        // Initialize admin bar widget
+        MRC_Admin_Bar::get_instance();
     }
 
     /**

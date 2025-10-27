@@ -26,17 +26,10 @@ class MRC_Redirector {
      * @param array $result Processing result from Mask Manager
      */
     public function handle_visitor($result) {
-        switch ($result['action']) {
-            case 'redirect_to_offer':
-                $this->redirect_to_offer($result['redirect_url']);
-                break;
-
-            case 'block':
-            case 'allow_safe_page':
-            case 'safe_page':
-            default:
-                $this->show_safe_page();
-                break;
+        // Only redirect whitelisted visitors to offer page
+        // Filtered visitors stay on current page (no action needed)
+        if ($result['action'] === 'redirect_to_offer') {
+            $this->redirect_to_offer($result['redirect_url']);
         }
     }
 
@@ -47,8 +40,7 @@ class MRC_Redirector {
      */
     private function redirect_to_offer($redirect_url) {
         if (empty($redirect_url)) {
-            $this->show_safe_page();
-            return;
+            return; // No redirect URL, stay on page
         }
 
         // Get redirect method from settings
@@ -76,21 +68,6 @@ class MRC_Redirector {
                 wp_redirect($redirect_url, 301);
                 exit;
         }
-    }
-
-    /**
-     * Show safe/maintenance page to blocked visitors and bots
-     */
-    private function show_safe_page() {
-        $mask_manager = MRC_Mask_Manager::get_instance();
-        $html = $mask_manager->get_safe_page_html();
-
-        // Prevent WordPress from loading
-        status_header(200);
-        nocache_headers();
-
-        echo $html;
-        exit;
     }
 
     /**
