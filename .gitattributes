@@ -1,0 +1,14 @@
+# Ensure clean release archives via `git archive`
+
+# Exclude debug/testing and helper scripts
+debug-*.php export-ignore
+test-*.php export-ignore
+update-api-url.php export-ignore
+scripts/ export-ignore
+
+# Exclude non-essential docs from release packages
+# Default: exclude all Markdown docs, then un-exclude the core ones we keep
+*.md export-ignore
+README.md -export-ignore
+CHANGELOG.md -export-ignore
+SECURITY.md -export-ignore

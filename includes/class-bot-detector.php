@@ -236,29 +236,68 @@ class MRC_Bot_Detector {
     }
 
     /**
+     * Get IP reputation data from Mr. Cloak threat intelligence service
+     *
+     * @param string $ip_address IP address
+     * @return array IP reputation data
+     */
+    public function get_ip_reputation($ip_address) {
+        // Check cached result first
+        $cache_key = 'mrc_ip_rep_' . md5($ip_address);
+        $cached_result = get_transient($cache_key);
+
+        if ($cached_result !== false) {
+            return $cached_result;
+        }
+
+        $defaults = array(
+            'success' => false,
+            'error' => null,
+            'is_proxy' => false,
+            'is_vpn' => false,
+            'is_tor' => false,
+            'is_crawler' => false,
+            'is_bot' => false,
+            'fraud_score' => 0,
+            'isp' => null,
+            'asn' => null,
+            'organization' => null,
+            'is_hosting' => false,
+            'country_code' => null,
+            'timezone' => null,
+            'mobile' => false,
+            'abuse_velocity' => 'none',
+            'recent_abuse' => false
+        );
+
+        if (!filter_var($ip_address, FILTER_VALIDATE_IP)) {
+            $result = $defaults;
+            $result['error'] = 'Invalid IP address';
+            set_transient($cache_key, $result, HOUR_IN_SECONDS);
+            return $result;
+        }
+
+        // Query Mr. Cloak reputation service (proxied through SaaS backend)
+        $api_client = MRC_API_Client::get_instance();
+        $response = $api_client->lookup_ip_reputation($ip_address);
+
+        $result = array_merge($defaults, $response);
+
+        // Cache result for 6 hours to reduce API calls
+        set_transient($cache_key, $result, 6 * HOUR_IN_SECONDS);
+
+        return $result;
+    }
+
+    /**
      * Check if visitor is using VPN/Proxy
-     * (Placeholder - would need integration with VPN detection service)
      *
      * @param string $ip_address IP address
      * @return bool True if VPN/Proxy detected
      */
     public function is_vpn_or_proxy($ip_address) {
-        // Check cached result first
-        $cache_key = 'mrc_vpn_check_' . md5($ip_address);
-        $cached_result = get_transient($cache_key);
-
-        if ($cached_result !== false) {
-            return $cached_result === 'yes';
-        }
-
-        // TODO: Integrate with VPN detection service (ProxyCheck.io, IPQualityScore, etc.)
-        // For now, return false (no VPN detection)
-        $is_vpn = false;
-
-        // Cache result for 1 hour
-        set_transient($cache_key, $is_vpn ? 'yes' : 'no', HOUR_IN_SECONDS);
-
-        return $is_vpn;
+        $ip_reputation = $this->get_ip_reputation($ip_address);
+        return $ip_reputation['is_vpn'] || $ip_reputation['is_proxy'] || $ip_reputation['is_tor'];
     }
 
     /**
@@ -405,6 +444,276 @@ class MRC_Bot_Detector {
     }
 
     /**
+     * Verify legitimate bot via reverse DNS lookup
+     *
+     * @param string $ip_address IP address
+     * @param string $bot_name Bot name detected from user agent
+     * @return bool True if bot is verified legitimate
+     */
+    public function verify_legitimate_bot($ip_address, $bot_name) {
+        // Check cache first
+        $cache_key = 'mrc_bot_verify_' . md5($ip_address . $bot_name);
+        $cached_result = get_transient($cache_key);
+
+        if ($cached_result !== false) {
+            return $cached_result === 'yes';
+        }
+
+        $is_verified = false;
+
+        // Get hostname from IP
+        $hostname = gethostbyaddr($ip_address);
+
+        if ($hostname && $hostname !== $ip_address) {
+            // Define verification patterns for known bots
+            $verification_patterns = array(
+                'googlebot' => array('.googlebot.com', '.google.com'),
+                'google-ads-review' => array('.googlebot.com', '.google.com'),
+                'bingbot' => array('.search.msn.com'),
+                'facebookexternalhit' => array('.facebook.com', '.fbsv.net'),
+                'facebot' => array('.facebook.com', '.fbsv.net')
+            );
+
+            if (isset($verification_patterns[$bot_name])) {
+                foreach ($verification_patterns[$bot_name] as $pattern) {
+                    if (substr($hostname, -strlen($pattern)) === $pattern) {
+                        // Forward lookup to verify
+                        $forward_ip = gethostbyname($hostname);
+                        if ($forward_ip === $ip_address) {
+                            $is_verified = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Cache for 24 hours
+        set_transient($cache_key, $is_verified ? 'yes' : 'no', DAY_IN_SECONDS);
+
+        return $is_verified;
+    }
+
+    /**
+     * Check for indicators of headless browser or automation
+     *
+     * @param array $fingerprint JavaScript fingerprint data
+     * @return array Detection result with suspicion score
+     */
+    public function detect_headless_browser($fingerprint) {
+        if (empty($fingerprint) || !is_array($fingerprint)) {
+            return array(
+                'is_headless' => false,
+                'suspicion_score' => 0,
+                'indicators' => array()
+            );
+        }
+
+        $indicators = array();
+        $suspicion_score = 0;
+
+        // Check automation detection from fingerprint
+        if (isset($fingerprint['automation'])) {
+            $auto = $fingerprint['automation'];
+
+            if (isset($auto['webdriver']) && $auto['webdriver']) {
+                $indicators[] = 'webdriver_detected';
+                $suspicion_score += 50;
+            }
+
+            if (isset($auto['phantom']) && $auto['phantom']) {
+                $indicators[] = 'phantom_js_detected';
+                $suspicion_score += 50;
+            }
+
+            if (isset($auto['selenium']) && $auto['selenium']) {
+                $indicators[] = 'selenium_detected';
+                $suspicion_score += 50;
+            }
+
+            if (isset($auto['headlessChrome']) && $auto['headlessChrome']) {
+                $indicators[] = 'headless_chrome_detected';
+                $suspicion_score += 50;
+            }
+
+            // Check for missing features typical of headless browsers
+            if (isset($auto['plugins']) && !$auto['plugins']) {
+                $indicators[] = 'no_plugins';
+                $suspicion_score += 20;
+            }
+
+            if (isset($auto['languages']) && !$auto['languages']) {
+                $indicators[] = 'no_languages';
+                $suspicion_score += 20;
+            }
+        }
+
+        // Check canvas fingerprint
+        if (isset($fingerprint['canvas'])) {
+            // Headless browsers often have very similar or null canvas fingerprints
+            if (empty($fingerprint['canvas']) || $fingerprint['canvas'] === 'data:,') {
+                $indicators[] = 'invalid_canvas';
+                $suspicion_score += 25;
+            }
+        }
+
+        // Check WebGL
+        if (isset($fingerprint['webgl'])) {
+            $webgl = $fingerprint['webgl'];
+            if (empty($webgl) || (isset($webgl['vendor']) && $webgl['vendor'] === 'Google Inc.')) {
+                // SwiftShader is often used in headless Chrome
+                if (isset($webgl['renderer']) && stripos($webgl['renderer'], 'SwiftShader') !== false) {
+                    $indicators[] = 'swiftshader_webgl';
+                    $suspicion_score += 30;
+                }
+            }
+        }
+
+        return array(
+            'is_headless' => $suspicion_score >= 50,
+            'suspicion_score' => min($suspicion_score, 100),
+            'indicators' => $indicators
+        );
+    }
+
+    /**
+     * Check behavioral patterns for bot-like activity
+     *
+     * @param array $behavior Behavioral data from JavaScript
+     * @return array Analysis result
+     */
+    public function analyze_behavior($behavior) {
+        if (empty($behavior) || !is_array($behavior)) {
+            return array(
+                'is_suspicious' => false,
+                'suspicion_score' => 0,
+                'reasons' => array()
+            );
+        }
+
+        $reasons = array();
+        $suspicion_score = 0;
+
+        // Check time on page
+        $time_on_page = $behavior['timeOnPage'] ?? 0;
+        if ($time_on_page < 0.5) {
+            $reasons[] = 'very_short_visit';
+            $suspicion_score += 30;
+        }
+
+        // Check mouse movements
+        $mouse_movements = $behavior['mouseMovements'] ?? 0;
+        if ($mouse_movements === 0 && $time_on_page > 2) {
+            $reasons[] = 'no_mouse_movement';
+            $suspicion_score += 40;
+        }
+
+        // Check for any human interaction
+        $clicks = $behavior['clicks'] ?? 0;
+        $scrolls = $behavior['scrolls'] ?? 0;
+        $keypresses = $behavior['keypresses'] ?? 0;
+
+        if ($clicks === 0 && $scrolls === 0 && $keypresses === 0 && $time_on_page > 3) {
+            $reasons[] = 'no_interactions';
+            $suspicion_score += 35;
+        }
+
+        // Check for unnatural patterns
+        if (isset($behavior['interactions']) && is_array($behavior['interactions'])) {
+            // Check if all interactions happen at exactly the same intervals
+            $intervals = array();
+            for ($i = 1; $i < count($behavior['interactions']); $i++) {
+                $interval = $behavior['interactions'][$i]['time'] - $behavior['interactions'][$i-1]['time'];
+                $intervals[] = $interval;
+            }
+
+            // If all intervals are within 10ms of each other, it's suspicious
+            if (count($intervals) > 2) {
+                $avg_interval = array_sum($intervals) / count($intervals);
+                $variance = 0;
+                foreach ($intervals as $interval) {
+                    $variance += pow($interval - $avg_interval, 2);
+                }
+                $variance = $variance / count($intervals);
+
+                if ($variance < 100) { // Very consistent timing
+                    $reasons[] = 'robotic_timing';
+                    $suspicion_score += 25;
+                }
+            }
+        }
+
+        return array(
+            'is_suspicious' => $suspicion_score >= 50,
+            'suspicion_score' => min($suspicion_score, 100),
+            'reasons' => $reasons
+        );
+    }
+
+    /**
+     * Check for IP and geolocation consistency
+     *
+     * @param array $ip_reputation IP reputation data
+     * @param array $fingerprint JavaScript fingerprint
+     * @return array Consistency check result
+     */
+    public function check_ip_consistency($ip_reputation, $fingerprint) {
+        $inconsistencies = array();
+        $suspicion_score = 0;
+
+        if (empty($ip_reputation) || empty($fingerprint)) {
+            return array(
+                'is_consistent' => true,
+                'inconsistencies' => array(),
+                'suspicion_score' => 0
+            );
+        }
+
+        // Check timezone consistency
+        if (isset($ip_reputation['timezone']) && isset($fingerprint['timezone'])) {
+            $ip_timezone = $ip_reputation['timezone'];
+            $browser_timezone = $fingerprint['timezone'];
+
+            if ($ip_timezone !== $browser_timezone) {
+                $inconsistencies[] = 'timezone_mismatch';
+                $suspicion_score += 30;
+            }
+        }
+
+        // Check if hosting/data center IP claims to be residential
+        if (isset($ip_reputation['is_hosting']) && $ip_reputation['is_hosting']) {
+            $inconsistencies[] = 'hosting_provider_ip';
+            $suspicion_score += 40;
+        }
+
+        // Check if mobile claim matches IP type
+        if (isset($ip_reputation['mobile']) && isset($fingerprint['platform'])) {
+            $is_mobile_ip = $ip_reputation['mobile'];
+            $platform = strtolower($fingerprint['platform']);
+            $is_mobile_platform = (stripos($platform, 'mobile') !== false ||
+                                    stripos($platform, 'android') !== false ||
+                                    stripos($platform, 'iphone') !== false);
+
+            if ($is_mobile_ip !== $is_mobile_platform) {
+                $inconsistencies[] = 'mobile_type_mismatch';
+                $suspicion_score += 25;
+            }
+        }
+
+        // Check fraud score from IP reputation
+        if (isset($ip_reputation['fraud_score']) && $ip_reputation['fraud_score'] > 75) {
+            $inconsistencies[] = 'high_fraud_score';
+            $suspicion_score += $ip_reputation['fraud_score'] / 2;
+        }
+
+        return array(
+            'is_consistent' => $suspicion_score < 50,
+            'inconsistencies' => $inconsistencies,
+            'suspicion_score' => min($suspicion_score, 100)
+        );
+    }
+
+    /**
      * Get all visitor information for filtering
      *
      * @param string $ip_address IP address
@@ -412,15 +721,38 @@ class MRC_Bot_Detector {
      * @return array Visitor information
      */
     public function get_visitor_info($ip_address, $user_agent) {
+        // Get IP reputation data
+        $ip_reputation = $this->get_ip_reputation($ip_address);
+
+        // Detect bot from user agent
+        $bot_info = $this->detect_bot($user_agent);
+
+        // If bot detected, verify if it's legitimate
+        if ($bot_info['is_bot']) {
+            $bot_info['is_verified'] = $this->verify_legitimate_bot($ip_address, $bot_info['bot_name']);
+
+            // If unverified and IP reputation says it's a bot, increase confidence
+            if (!$bot_info['is_verified'] && $ip_reputation['is_bot']) {
+                $bot_info['confidence'] = 'high';
+            } elseif (!$bot_info['is_verified']) {
+                $bot_info['confidence'] = 'medium';
+            } else {
+                $bot_info['confidence'] = 'verified';
+            }
+        }
+
         return array(
             'ip_address' => $ip_address,
             'user_agent' => $user_agent,
-            'bot_info' => $this->detect_bot($user_agent),
-            'country_code' => $this->get_country_from_ip($ip_address),
+            'bot_info' => $bot_info,
+            'ip_reputation' => $ip_reputation,
+            'country_code' => $ip_reputation['country_code'] ?? $this->get_country_from_ip($ip_address),
             'browser' => $this->detect_browser($user_agent),
             'os' => $this->detect_os($user_agent),
             'languages' => $this->parse_languages(self::get_accept_language()),
-            'is_vpn' => $this->is_vpn_or_proxy($ip_address)
+            'is_vpn' => $ip_reputation['is_vpn'] || $ip_reputation['is_proxy'] || $ip_reputation['is_tor'],
+            'is_hosting' => $ip_reputation['is_hosting'] ?? false,
+            'fraud_score' => $ip_reputation['fraud_score'] ?? 0
         );
     }
 }

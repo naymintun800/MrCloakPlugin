@@ -3,6 +3,25 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+// Handle license deactivation
+if (isset($_POST['mrc_deactivate_license']) && check_admin_referer('mrc_dashboard')) {
+    // Clear all license-related data
+    delete_option('mrc_license_key');
+    delete_option('mrc_subscription_status');
+    delete_option('mrc_cached_masks');
+    delete_option('mrc_masks_updated');
+    delete_option('mrc_mask_configs');
+    delete_option('mrc_filtering_enabled');
+
+    // Clear analytics counters
+    delete_option('mrc_total_whitelisted_count');
+    delete_option('mrc_total_filtered_count');
+    delete_option('mrc_analytics_queue');
+
+    echo '<div class="notice notice-success"><p><strong>License Deactivated!</strong> You can now enter a new license key.</p></div>';
+    echo '<script>window.location.reload();</script>';
+}
+
 // Handle license activation
 if (isset($_POST['mrc_activate_license']) && check_admin_referer('mrc_dashboard')) {
     $license_key = sanitize_text_field($_POST['mrc_license_key']);
@@ -77,7 +96,16 @@ if (isset($_POST['mrc_toggle_mask']) && check_admin_referer('mrc_dashboard')) {
     echo '<div class="notice notice-success"><p>Mask ' . ($enabled ? 'enabled' : 'disabled') . ' successfully!</p></div>';
 }
 
-// Handle landing page update
+// Handle analytics reset
+if (isset($_POST['mrc_reset_analytics']) && check_admin_referer('mrc_dashboard')) {
+    delete_option('mrc_total_whitelisted_count');
+    delete_option('mrc_total_filtered_count');
+    delete_option('mrc_analytics_queue');
+
+    echo '<div class="notice notice-success"><p>Analytics counters reset successfully!</p></div>';
+}
+
+// Handle white page update
 if (isset($_POST['mrc_update_landing_page']) && check_admin_referer('mrc_dashboard')) {
     $mask_id = sanitize_text_field($_POST['mask_id']);
     $landing_page = sanitize_text_field($_POST['landing_page']);
@@ -101,8 +129,13 @@ if (isset($_POST['mrc_update_landing_page']) && check_admin_referer('mrc_dashboa
         ));
     }
 
-    echo '<div class="notice notice-success"><p>Landing page updated successfully!</p></div>';
+    echo '<div class="notice notice-success"><p>White page updated successfully!</p></div>';
 }
+
+// Validate license to ensure status is fresh when viewing dashboard
+// Uses 5-minute cached validation - no access token required
+$api_client = MRC_API_Client::get_instance();
+$is_valid = $api_client->is_license_valid();
 
 // Get data
 $license_key = MRC_Security::decrypt(get_option('mrc_license_key'));
@@ -161,6 +194,37 @@ $posts = get_posts(array('posts_per_page' => 50));
         </div>
     <?php else: ?>
 
+    <?php
+    // Check if subscription is inactive
+    $is_subscription_inactive = in_array($subscription_status, array('revoked', 'expired', 'suspended', 'canceled', 'past_due'));
+
+    if ($is_subscription_inactive):
+    ?>
+        <div class="notice notice-error" style="padding: 20px;">
+            <h2 style="margin-top: 0;">⚠️ Subscription Inactive</h2>
+            <p><strong>Status:</strong> <?php echo esc_html(ucfirst($subscription_status ?? 'Unknown')); ?></p>
+            <p>Your subscription is no longer active. Filtering has been disabled automatically.</p>
+
+            <?php if ($subscription_status === 'revoked'): ?>
+                <p><strong>This license has been revoked.</strong> Please contact support or generate a new license key.</p>
+            <?php elseif ($subscription_status === 'expired'): ?>
+                <p>Your subscription has expired. Please renew to continue using Mr. Cloak.</p>
+            <?php elseif ($subscription_status === 'past_due'): ?>
+                <p>Your payment is past due. Please update your payment method.</p>
+            <?php endif; ?>
+
+            <p>
+                <a href="https://mrcloak.com/dashboard/billing" target="_blank" class="button button-primary">Manage Subscription</a>
+                <form method="post" action="" style="display: inline;" onsubmit="return confirm('This will deactivate the current license. You can then enter a new license key.');">
+                    <?php wp_nonce_field('mrc_dashboard'); ?>
+                    <button type="submit" name="mrc_deactivate_license" class="button button-secondary">
+                        Change License Key
+                    </button>
+                </form>
+            </p>
+        </div>
+    <?php else: ?>
+
     <!-- Dashboard Grid -->
     <div class="mrc-dashboard-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 20px;">
 
@@ -172,10 +236,16 @@ $posts = get_posts(array('posts_per_page' => 50));
                     <?php echo esc_html(ucfirst($subscription_status ?? 'Unknown')); ?>
                 </span>
             </p>
-            <p><strong>License:</strong><br><code><?php echo esc_html($license_key); ?></code></p>
+            <p><strong>License:</strong><br><code><?php echo esc_html(MRC_API_Client::mask_license_key($license_key)); ?></code></p>
             <p>
                 <a href="https://mrcloak.com/dashboard" target="_blank" class="button">Manage Subscription</a>
             </p>
+            <form method="post" action="" style="margin-top: 15px;" onsubmit="return confirm('Are you sure you want to deactivate this license? This will disable all filtering and clear your mask configurations.');">
+                <?php wp_nonce_field('mrc_dashboard'); ?>
+                <button type="submit" name="mrc_deactivate_license" class="button button-secondary">
+                    Change License Key
+                </button>
+            </form>
         </div>
 
         <!-- Quick Stats Card -->
@@ -198,6 +268,12 @@ $posts = get_posts(array('posts_per_page' => 50));
             <p style="margin-top: 15px; text-align: center;">
                 <a href="https://mrcloak.com/dashboard/analytics" target="_blank" class="button">View Detailed Analytics</a>
             </p>
+            <form method="post" action="" style="margin-top: 10px; text-align: center;" onsubmit="return confirm('Are you sure you want to reset the analytics counters? This cannot be undone.');">
+                <?php wp_nonce_field('mrc_dashboard'); ?>
+                <button type="submit" name="mrc_reset_analytics" class="button button-link" style="color: #dc3232; text-decoration: none; font-size: 12px;">
+                    Reset Counters
+                </button>
+            </form>
         </div>
 
     </div>
@@ -243,21 +319,22 @@ $posts = get_posts(array('posts_per_page' => 50));
                     </div>
 
                     <?php if ($is_enabled): ?>
-                        <!-- Landing Page Selector -->
+                        <!-- White Page Selector -->
                         <form method="post" action="">
                             <?php wp_nonce_field('mrc_dashboard'); ?>
                             <input type="hidden" name="mask_id" value="<?php echo esc_attr($mask_id); ?>">
+                            <input type="hidden" name="mrc_update_landing_page" value="1">
 
                             <table class="form-table" style="margin-top: 15px;">
                                 <tr>
-                                    <th style="width: 150px;">Landing Page:</th>
+                                    <th style="width: 150px;">White Page:</th>
                                     <td>
                                         <select name="landing_page" class="regular-text" onchange="this.form.submit()">
                                             <option value="home" <?php selected($config['landing_page_type'], 'home'); ?>>🏠 Home Page</option>
                                             <optgroup label="Pages">
                                                 <?php foreach ($pages as $page): ?>
                                                     <option value="page-<?php echo $page->ID; ?>"
-                                                            <?php selected($config['landing_page_id'], $page->ID); ?>>
+                                                            <?php selected($config['landing_page_id'] == $page->ID && $config['landing_page_type'] === 'page', true); ?>>
                                                         📄 <?php echo esc_html($page->post_title); ?>
                                                     </option>
                                                 <?php endforeach; ?>
@@ -265,14 +342,14 @@ $posts = get_posts(array('posts_per_page' => 50));
                                             <optgroup label="Posts">
                                                 <?php foreach ($posts as $post): ?>
                                                     <option value="post-<?php echo $post->ID; ?>"
-                                                            <?php selected($config['landing_page_id'], $post->ID); ?>>
+                                                            <?php selected($config['landing_page_id'] == $post->ID && $config['landing_page_type'] === 'post', true); ?>>
                                                         📝 <?php echo esc_html($post->post_title); ?>
                                                     </option>
                                                 <?php endforeach; ?>
                                             </optgroup>
                                         </select>
 
-                                        <button type="submit" name="mrc_update_landing_page" class="button button-secondary" style="display: none;">Update</button>
+                                        <noscript><button type="submit" class="button button-secondary">Update</button></noscript>
 
                                         <?php
                                         // Get preview URL
@@ -304,7 +381,9 @@ $posts = get_posts(array('posts_per_page' => 50));
         <?php endif; ?>
     </div>
 
-    <?php endif; ?>
+    <?php endif; // End subscription active check ?>
+
+    <?php endif; // End license key check ?>
 </div>
 
 <style>

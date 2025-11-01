@@ -7,7 +7,7 @@ if (!defined('ABSPATH')) {
  * Mr. Cloak Analytics Queue
  *
  * Manages analytics event queuing and batch submission to API
- * Batches events (50 events) or flushes hourly
+ * Batches events (50 events) or flushes every 10 minutes
  */
 class MRC_Analytics_Queue {
 
@@ -200,12 +200,21 @@ class MRC_Analytics_Queue {
     }
 
     /**
-     * Schedule hourly flush cron job
+     * Schedule flush cron job (every 15 minutes for faster updates)
      */
     public static function schedule_cron() {
-        if (!wp_next_scheduled('mrc_flush_analytics')) {
-            wp_schedule_event(time() + 3600, 'hourly', 'mrc_flush_analytics');
+        $desired_schedule = 'mrc_every_15_minutes';
+        $current_schedule = wp_get_schedule('mrc_flush_analytics');
+
+        if ($current_schedule === $desired_schedule) {
+            return;
         }
+
+        // Clear any existing schedule so we can ensure the new interval is applied
+        wp_clear_scheduled_hook('mrc_flush_analytics');
+
+        // Schedule for every 15 minutes
+        wp_schedule_event(time() + 900, $desired_schedule, 'mrc_flush_analytics');
     }
 
     /**

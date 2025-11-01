@@ -251,6 +251,15 @@ class MRC_Mask_Manager {
         $queue[] = $event;
         update_option('mrc_analytics_queue', $queue);
 
+        // Increment persistent counters for dashboard display
+        if ($result['visitor_type'] === 'whitelisted') {
+            $whitelisted_count = get_option('mrc_total_whitelisted_count', 0);
+            update_option('mrc_total_whitelisted_count', $whitelisted_count + 1);
+        } else {
+            $filtered_count = get_option('mrc_total_filtered_count', 0);
+            update_option('mrc_total_filtered_count', $filtered_count + 1);
+        }
+
         // Check if we should flush queue (50 events reached)
         if (count($queue) >= 50) {
             $analytics_queue = MRC_Analytics_Queue::get_instance();
@@ -288,7 +297,17 @@ class MRC_Mask_Manager {
         // Check if subscription is active
         $subscription_status = get_option('mrc_subscription_status');
 
-        if (in_array($subscription_status, array('past_due', 'revoked', 'suspended'))) {
+        // If subscription is not active, disable filtering immediately
+        if (in_array($subscription_status, array('past_due', 'revoked', 'suspended', 'expired', 'canceled'))) {
+            // Clear cached data to prevent using stale masks
+            delete_option('mrc_cached_masks');
+            delete_option('mrc_mask_configs');
+            return false;
+        }
+
+        // Check if license key exists
+        $license_key = MRC_Security::decrypt(get_option('mrc_license_key'));
+        if (empty($license_key)) {
             return false;
         }
 
@@ -408,27 +427,19 @@ class MRC_Mask_Manager {
 
     /**
      * Get simple stats (whitelisted and filtered counts)
+     * Returns cumulative totals from persistent counters
      *
      * @return array Stats array
      */
     public function get_simple_stats() {
-        $queue = get_option('mrc_analytics_queue', array());
-
-        $whitelisted = 0;
-        $filtered = 0;
-
-        foreach ($queue as $event) {
-            if ($event['visitor_type'] === 'whitelisted') {
-                $whitelisted++;
-            } else {
-                $filtered++;
-            }
-        }
+        // Get cumulative totals from persistent counters
+        $whitelisted = get_option('mrc_total_whitelisted_count', 0);
+        $filtered = get_option('mrc_total_filtered_count', 0);
 
         return array(
             'whitelisted' => $whitelisted,
             'filtered' => $filtered,
-            'total' => count($queue)
+            'total' => $whitelisted + $filtered
         );
     }
 }

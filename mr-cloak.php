@@ -3,7 +3,7 @@
  * Plugin Name: Mr. Cloak
  * Plugin URI: https://mrcloak.com
  * Description: SaaS-powered traffic filtering and bot detection for affiliate marketers. Cloaks your campaigns from ad review bots.
- * Version: 3.0.0
+ * Version: 3.0.1
  * Author: Mr. Cloak
  * License: GPL v2 or later
  * Text Domain: mr-cloak
@@ -16,7 +16,7 @@ if (!defined('ABSPATH')) {
 
 define('MRC_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('MRC_PLUGIN_URL', plugin_dir_url(__FILE__));
-define('MRC_VERSION', '3.0.0');
+define('MRC_VERSION', '3.0.1');
 
 // Require core classes
 require_once MRC_PLUGIN_DIR . 'includes/class-security.php';
@@ -25,6 +25,7 @@ require_once MRC_PLUGIN_DIR . 'includes/class-bot-detector.php';
 require_once MRC_PLUGIN_DIR . 'includes/class-mask-manager.php';
 require_once MRC_PLUGIN_DIR . 'includes/class-analytics-queue.php';
 require_once MRC_PLUGIN_DIR . 'includes/class-redirector.php';
+require_once MRC_PLUGIN_DIR . 'includes/class-honeypot.php';
 
 // Require admin classes
 if (is_admin()) {
@@ -61,6 +62,7 @@ class Mr_Cloak {
         add_action('init', array($this, 'init_components'));
         add_action('template_redirect', array($this, 'handle_request'), 1);
         add_action('admin_init', array($this, 'check_version_upgrade'));
+        add_action('init', array('MRC_Analytics_Queue', 'schedule_cron'));
 
         // Register cron hooks
         add_action('mrc_heartbeat', array($this, 'run_heartbeat'));
@@ -68,6 +70,18 @@ class Mr_Cloak {
 
         // Register cron schedules
         add_filter('cron_schedules', array($this, 'add_cron_schedules'));
+
+        // Enqueue frontend scripts
+        add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_scripts'));
+
+        // Register AJAX handlers
+        add_action('wp_ajax_mrc_save_fingerprint', array($this, 'ajax_save_fingerprint'));
+        add_action('wp_ajax_nopriv_mrc_save_fingerprint', array($this, 'ajax_save_fingerprint'));
+        add_action('wp_ajax_mrc_save_behavior', array($this, 'ajax_save_behavior'));
+        add_action('wp_ajax_nopriv_mrc_save_behavior', array($this, 'ajax_save_behavior'));
+
+        // Add honeypot to footer
+        add_action('wp_footer', array($this, 'add_honeypot'));
     }
 
     public function init_components() {
@@ -85,6 +99,14 @@ class Mr_Cloak {
     public function handle_request() {
         // Skip for WordPress admins and admin area
         if (is_admin() || current_user_can('manage_options')) {
+            return;
+        }
+
+        // Validate license using cached check (5-minute cache)
+        // This ensures license status is verified without requiring access tokens
+        $api_client = MRC_API_Client::get_instance();
+        if (!$api_client->is_license_valid()) {
+            // License is invalid or revoked - disable filtering
             return;
         }
 
@@ -130,12 +152,10 @@ class Mr_Cloak {
      * Plugin activation
      */
     public function activate() {
-        // Schedule heartbeat cron (every 30 minutes)
-        if (!wp_next_scheduled('mrc_heartbeat')) {
-            wp_schedule_event(time() + 1800, 'mrc_every_30_minutes', 'mrc_heartbeat');
-        }
+        // Heartbeat cron is now disabled - validation happens on-demand
+        // This reduces API load on backend
 
-        // Schedule analytics flush (hourly)
+        // Ensure analytics cron is set to run every 15 minutes
         MRC_Analytics_Queue::schedule_cron();
 
         // Set default options
@@ -159,7 +179,6 @@ class Mr_Cloak {
      */
     public function deactivate() {
         // Clear cron jobs
-        wp_clear_scheduled_hook('mrc_heartbeat');
         MRC_Analytics_Queue::unschedule_cron();
     }
 
@@ -260,19 +279,21 @@ class Mr_Cloak {
      * Add custom cron schedules
      */
     public function add_cron_schedules($schedules) {
-        $schedules['mrc_every_30_minutes'] = array(
-            'interval' => 1800,
-            'display' => __('Every 30 minutes', 'mr-cloak')
+        $schedules['mrc_every_15_minutes'] = array(
+            'interval' => 900,
+            'display' => __('Every 15 minutes', 'mr-cloak')
         );
         return $schedules;
     }
 
     /**
      * Run heartbeat cron job
+     * DISABLED: Heartbeat is now deprecated - validation happens on-demand
      */
     public function run_heartbeat() {
-        $api_client = MRC_API_Client::get_instance();
-        $api_client->heartbeat();
+        // No longer needed - validation happens on every visitor request
+        // This reduces unnecessary API calls to the backend
+        return;
     }
 
     /**
@@ -281,6 +302,145 @@ class Mr_Cloak {
     public function flush_analytics_queue() {
         $analytics_queue = MRC_Analytics_Queue::get_instance();
         $analytics_queue->flush_queue();
+    }
+
+    /**
+     * Enqueue frontend scripts for fingerprinting
+     */
+    public function enqueue_frontend_scripts() {
+        // Only enqueue on non-admin pages
+        if (is_admin()) {
+            return;
+        }
+
+        // Only enqueue if filtering is enabled
+        if (!$this->mask_manager || !$this->mask_manager->is_filtering_enabled()) {
+            return;
+        }
+
+        // Enqueue fingerprint script
+        wp_enqueue_script(
+            'mrc-fingerprint',
+            MRC_PLUGIN_URL . 'assets/js/fingerprint.js',
+            array(),
+            MRC_VERSION,
+            true
+        );
+
+        // Localize script with AJAX URL and nonce
+        wp_localize_script('mrc-fingerprint', 'mrcFingerprint', array(
+            'ajaxUrl' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce('mrc_fingerprint_nonce')
+        ));
+    }
+
+    /**
+     * AJAX handler to save fingerprint data
+     */
+    public function ajax_save_fingerprint() {
+        // Verify nonce
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'mrc_fingerprint_nonce')) {
+            wp_send_json_error('Invalid nonce');
+            return;
+        }
+
+        // Get fingerprint data
+        $fingerprint = isset($_POST['fingerprint']) ? json_decode(stripslashes($_POST['fingerprint']), true) : array();
+
+        if (empty($fingerprint)) {
+            wp_send_json_error('No fingerprint data');
+            return;
+        }
+
+        // Get or create visitor session
+        $session_id = $this->get_visitor_session_id();
+
+        // Store fingerprint data in transient (expires after 1 hour)
+        set_transient('mrc_fp_' . $session_id, $fingerprint, HOUR_IN_SECONDS);
+
+        // Run advanced detection checks
+        $bot_detector = MRC_Bot_Detector::get_instance();
+        $headless_check = $bot_detector->detect_headless_browser($fingerprint);
+
+        // Store detection results
+        set_transient('mrc_headless_' . $session_id, $headless_check, HOUR_IN_SECONDS);
+
+        wp_send_json_success(array(
+            'session_id' => $session_id,
+            'headless_detected' => $headless_check['is_headless']
+        ));
+    }
+
+    /**
+     * AJAX handler to save behavioral data
+     */
+    public function ajax_save_behavior() {
+        // Verify nonce
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'mrc_fingerprint_nonce')) {
+            wp_send_json_error('Invalid nonce');
+            return;
+        }
+
+        // Get behavior data
+        $behavior = isset($_POST['behavior']) ? json_decode(stripslashes($_POST['behavior']), true) : array();
+
+        if (empty($behavior)) {
+            wp_send_json_error('No behavior data');
+            return;
+        }
+
+        // Get visitor session
+        $session_id = $this->get_visitor_session_id();
+
+        // Store behavior data
+        set_transient('mrc_behavior_' . $session_id, $behavior, HOUR_IN_SECONDS);
+
+        // Run behavioral analysis
+        $bot_detector = MRC_Bot_Detector::get_instance();
+        $behavior_analysis = $bot_detector->analyze_behavior($behavior);
+
+        // Store analysis results
+        set_transient('mrc_behavior_analysis_' . $session_id, $behavior_analysis, HOUR_IN_SECONDS);
+
+        wp_send_json_success(array(
+            'session_id' => $session_id,
+            'suspicious' => $behavior_analysis['is_suspicious']
+        ));
+    }
+
+    /**
+     * Get or create visitor session ID
+     *
+     * @return string Session ID
+     */
+    private function get_visitor_session_id() {
+        // Check for existing session cookie
+        if (isset($_COOKIE['mrc_session'])) {
+            return sanitize_text_field($_COOKIE['mrc_session']);
+        }
+
+        // Create new session ID
+        $session_id = wp_generate_password(32, false);
+
+        // Set cookie (expires in 1 hour) with secure flags
+        $cookie_options = array(
+            'expires'  => time() + HOUR_IN_SECONDS,
+            'path'     => '/',
+            'secure'   => is_ssl(),
+            'httponly' => true,
+            'samesite' => 'Lax'
+        );
+        setcookie('mrc_session', $session_id, $cookie_options);
+
+        return $session_id;
+    }
+
+    /**
+     * Add honeypot to footer
+     */
+    public function add_honeypot() {
+        $honeypot = MRC_Honeypot::get_instance();
+        $honeypot->add_to_footer();
     }
 }
 

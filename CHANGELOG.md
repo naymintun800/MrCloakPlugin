@@ -1,121 +1,215 @@
-# Facebook Bot Detector Pro - Changelog
+# Mr. Cloak - Changelog
 
-## Version 2.0.0 - 2025-08-16
+## Version 3.0.1 (2025-10-28) - SECURITY UPDATE
 
-### 🎉 Major Features Added
+### 🚨 **Critical Security Fix**
 
-**Smart Redirection System:**
-- Auto-redirect all non-whitelisted visitors to your chosen URL
-- Multiple redirect methods: 301/302/307/JavaScript/Meta refresh
-- Instant redirection with < 2ms processing time
-- Comprehensive redirect logging and analytics
+Fixed a security vulnerability where revoked/expired licenses would continue working indefinitely using cached data.
 
-**Advanced Whitelist Management:**
-- Default Facebook bot patterns pre-installed
-- Real-time auto-whitelisting of detected bots (80%+ confidence)
-- Manual whitelist with IP ranges, wildcards, and user agents
-- Import/export whitelist in CSV and JSON formats
-- Usage tracking and statistics
+#### **What Changed:**
 
-**Enhanced Admin Interface:**
-- New "Whitelist" page for complete whitelist management
-- New "Redirect Settings" page for redirection configuration
-- Real-time statistics for redirects and whitelist usage
-- Bulk operations for whitelist management
+1. **Smart Error Handling** ([class-api-client.php:153-200](includes/class-api-client.php#L153-L200))
+   - Plugin now distinguishes between authentication errors (401/403) and network errors
+   - **401/403 errors**: License immediately revoked, cache cleared, filtering disabled
+   - **Network errors**: Temporary fail-open behavior (safe)
 
-### 🔧 Core Improvements
+2. **Revoked Status Enforcement** ([class-api-client.php:241-275](includes/class-api-client.php#L241-L275))
+   - Added pre-cache check for revoked/expired status
+   - Prevents cached "valid" status from overriding revoked licenses
+   - Removed caching of invalid status (forces immediate re-check)
 
-**Detection Engine:**
-- Added `analyze_request_silent()` method for non-logging detection
-- Enhanced confidence scoring for better accuracy
-- Improved Facebook IP range verification
-- Better handling of edge cases
+3. **Version Bump**
+   - Updated to version 3.0.1
+   - All plugin installations should be updated immediately
 
-**Database Schema:**
-- New `wp_facebook_bot_whitelist` table for whitelist management
-- New `wp_facebook_bot_redirects` table for redirect logging
-- Optimized indexes for better performance
-- Automatic cleanup of old data
+#### **Before This Fix:**
+- ❌ Revoked license: Plugin continues working with cached data indefinitely
+- ❌ Message: "API connection issues detected. Using cached data."
 
-**Security & Performance:**
-- Whitelist checking happens before expensive detection
-- Cached IP verification results
-- Logged-in users and admin pages are never affected
-- URL validation prevents redirect loops
+#### **After This Fix:**
+- ✅ Revoked license: Plugin stops working immediately (within 5 minutes max)
+- ✅ Cache cleared, filtering disabled
+- ✅ Clear error message: "License validation failed"
 
-### 📊 New Admin Features
+#### **Impact:**
 
-**Whitelist Management:**
-- View all whitelist entries with filtering
-- Add manual entries with IP ranges and wildcards
-- See recently auto-detected bots
-- Export/import functionality
-- Usage statistics and most-used entries
+**For Users with Valid Licenses:**
+- ✅ No impact - continues working normally
+- ✅ Still resilient to temporary API outages
+- ✅ Performance unchanged (5-minute cache still active)
 
-**Redirect Settings:**
-- Enable/disable redirection system
-- Configure redirect URL and method
-- Test redirect URLs before applying
-- View redirect logs and statistics
-- Bulk management of redirect data
+**For Revoked/Expired Licenses:**
+- ✅ Plugin enforcement works correctly now
+- ✅ Can no longer use service after cancellation
 
-**Enhanced Settings:**
-- Auto-whitelist confidence threshold
-- Redirect log retention settings
-- New redirection options
-- Improved UI with better organization
+### **Testing:**
 
-### 🎯 How It Works
-
-1. **Request Analysis:** Every visitor is checked against whitelist
-2. **Whitelist Check:** Pre-approved IPs/user agents proceed normally
-3. **Bot Detection:** Unknown visitors analyzed for Facebook bot patterns
-4. **Auto-Whitelist:** High-confidence bots (80%+) automatically whitelisted
-5. **Redirection:** All other visitors redirected to your chosen destination
-
-### 📈 Default Whitelist
-
-Pre-configured with Facebook's official patterns:
-- `facebookexternalhit/1.1` crawler
-- `Facebot` identifier
-- `facebookcatalog/1.0` crawler
-- Facebook IP ranges (AS32934)
-- All major Facebook crawler patterns
-
-### 🔄 Migration from v1.0
-
-- All existing settings preserved
-- New settings added with safe defaults
-- Redirection disabled by default (enable in settings)
-- Existing logs remain intact
-- No manual migration required
-
-### 📋 Technical Details
-
-- **Total Code:** 3,348+ lines (83% increase from v1.0)
-- **New Files:** 5 (whitelist management, redirector, new admin pages)
-- **New Features:** 15+ major features
-- **Performance:** < 2ms overhead for whitelisted visitors
-- **Compatibility:** WordPress 5.0+, PHP 7.4+
-
-### 🛡️ Security
-
-- All user inputs sanitized and validated
-- Nonce verification for all admin actions
-- Capability checks for sensitive operations
-- No sensitive data logging
-- Redirect URL validation prevents loops
+See [SECURITY_FIX.md](SECURITY_FIX.md) for detailed testing instructions.
 
 ---
 
-## Version 1.0.0 - 2025-08-15
+## Version 3.0.0 (2025-10-27)
+
+### 🎉 Major Release - SaaS Platform Launch
+
+Complete rewrite from Facebook Bot Detector to Mr. Cloak SaaS platform.
+
+#### **New Features:**
+
+1. **SaaS-Based License Management**
+   - Cloud-based license activation and validation
+   - Automatic subscription status sync
+   - Rolling JWT tokens for security
+   - Domain whitelisting and security
+
+2. **Backend API Integration**
+   - RESTful API communication
+   - Batch analytics submission
+   - Real-time mask synchronization
+   - Heartbeat monitoring
+
+3. **Hybrid Validation Approach**
+   - Server-side license validation every 5 minutes
+   - Local caching for performance
+   - Fail-open for network resilience
+   - Graceful degradation
+
+4. **Advanced Bot Detection**
+   - Browser fingerprinting (Canvas, WebGL, Audio)
+   - Headless browser detection
+   - Behavioral analysis
+   - Honeypot traps
+   - Multi-layer confidence scoring
+
+5. **Analytics Queue System**
+   - Local event queuing
+   - Batch submission (50 events or hourly)
+   - Retry logic for failed submissions
+   - Real-time dashboard sync
+
+6. **Domain Security Enforcement**
+   - Strict mode: Domain whitelisting required
+   - Flexible mode: Auto-approve with revocation
+   - Domain normalization
+   - IP whitelisting
+
+7. **Multi-Mask Support**
+   - Multiple campaign masks per license
+   - Page-specific mask assignment
+   - Per-mask analytics
+   - Individual mask configuration
+
+#### **Technical Improvements:**
+
+- Request signature verification (HMAC-SHA256)
+- Device fingerprinting for token theft prevention
+- Plugin integrity checking
+- Comprehensive API audit logging
+- Rate limiting handling
+- Enhanced security headers
+
+#### **Migration from v2.x:**
+
+- Automatic database cleanup of old tables
+- Settings migration
+- Seamless upgrade process
+- No manual configuration required
+
+---
+
+## Version 2.0.0 (2025-08-16) - Facebook Bot Detector Pro
+
+### Major Features Added
+
+**Smart Redirection System:**
+- Auto-redirect non-whitelisted visitors
+- Multiple redirect methods
+- Comprehensive redirect logging
+
+**Advanced Whitelist Management:**
+- Default Facebook bot patterns
+- Auto-whitelisting
+- Import/export functionality
+
+**Enhanced Admin Interface:**
+- New Whitelist management page
+- Redirect Settings page
+- Real-time statistics
+
+---
+
+## Version 1.0.0 (2025-08-15) - Facebook Bot Detector
 
 ### Initial Release
-- Facebook bot detection with dual-layer verification
-- IP address verification against AS32934
+- Facebook bot detection
+- IP verification (AS32934)
 - User agent pattern matching
-- High-frequency request detection
-- Confidence scoring system
-- Admin dashboard with statistics
+- Admin dashboard
 - Export functionality
-- Comprehensive logging
+
+---
+
+## Upgrade Instructions
+
+### From Version 3.0.0 to 3.0.1
+
+1. **Backup your WordPress site** (recommended)
+2. **Upload updated plugin files** via FTP or WordPress admin
+3. **Activate the plugin** (or reload if already active)
+4. **Test validation**: Visit your admin dashboard to verify license status
+5. **Done!** No database changes required.
+
+### From Version 2.x to 3.0.1
+
+1. **Deactivate** Facebook Bot Detector plugin
+2. **Upload** Mr. Cloak plugin
+3. **Activate** and configure license key
+4. Old settings will be migrated automatically
+5. Old database tables will be cleaned up
+
+### Important Notes:
+
+- Version 3.0.1 is a **security update** - all sites should update
+- No breaking changes between 3.0.0 and 3.0.1
+- Existing configurations remain intact
+- License keys do not need to be re-entered
+
+---
+
+## Developer Notes
+
+### API Backend Requirements
+
+Ensure your validation endpoint returns proper HTTP status codes:
+
+- **200**: License valid and active
+- **401**: License invalid/revoked/expired (triggers immediate enforcement)
+- **403**: Domain not authorized
+- **429**: Rate limited
+- **500/503**: Server error (triggers temporary fail-open)
+
+### Testing Revocation Flow
+
+```bash
+# 1. Revoke license in backend
+# 2. Wait max 5 minutes (cache TTL)
+# 3. Check WordPress site
+# Expected: Filtering disabled, cache cleared
+```
+
+### Version History
+
+- **3.0.1**: Security fix for license enforcement
+- **3.0.0**: Initial SaaS release
+- **2.0.0**: Facebook Bot Detector Pro with redirects
+- **1.0.0**: Initial Facebook Bot Detector
+
+---
+
+## Support
+
+For issues or questions:
+- GitHub: [github.com/mrcloak/wp-plugin](https://github.com/mrcloak/wp-plugin)
+- Documentation: [docs.mrcloak.com](https://docs.mrcloak.com)
+- Dashboard: [mrcloak.com/dashboard](https://mrcloak.com/dashboard)
+- Support: support@mrcloak.com

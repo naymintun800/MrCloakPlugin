@@ -121,7 +121,165 @@ class MRC_API_Client {
     }
 
     /**
+     * Validate license with server (Hybrid approach)
+     * This checks license validity without relying on access tokens
+     *
+     * @return array Response with status and validity
+     */
+    public function validate_license() {
+        $license_key = MRC_Security::decrypt(get_option('mrc_license_key'));
+
+        if (!$license_key) {
+            return array(
+                'valid' => false,
+                'status' => 'no_license',
+                'error' => 'No license key configured'
+            );
+        }
+
+        $domain = self::normalize_domain(parse_url(home_url(), PHP_URL_HOST));
+
+        // Call validation endpoint
+        $url = $this->api_base_url . '/api/plugin/validate';
+
+        $body = array(
+            'license_key' => $license_key,
+            'domain' => $domain,
+            'plugin_version' => MRC_VERSION
+        );
+
+        $response = $this->make_request('POST', $url, $body);
+
+        if (isset($response['error'])) {
+            $status_code = $response['status_code'] ?? 0;
+            $last_known_status = get_option('mrc_subscription_status', 'unknown');
+
+            // 401/403 = License is invalid = Disable immediately
+            if (in_array($status_code, array(401, 403))) {
+                error_log('Mr. Cloak: License validation failed - HTTP ' . $status_code . ': ' . $response['error']);
+
+                // Disable filtering and clear cache
+                update_option('mrc_subscription_status', 'invalid');
+                update_option('mrc_filtering_enabled', false);
+                update_option('mrc_last_validation', time());
+
+                // Clear cached data
+                delete_option('mrc_cached_masks');
+                delete_option('mrc_mask_configs');
+                delete_transient('mrc_license_valid_' . md5($license_key));
+
+                // Clear API failure tracking (don't show "connection issues" notification)
+                delete_option('mrc_api_failures');
+
+                // Return the ACTUAL error from API (don't assume "revoked")
+                return array(
+                    'valid' => false,
+                    'status' => 'invalid',
+                    'error' => $response['error'], // Use actual error message from API
+                    'error_type' => $response['error_type'] ?? 'authentication_failed'
+                );
+            }
+
+            // Network or server errors (5xx, timeouts, etc.) - safe to fail open temporarily
+            error_log('Mr. Cloak: API connection error (HTTP ' . $status_code . '), using cached status: ' . $last_known_status);
+
+            // If last known status was inactive, keep it inactive
+            if (in_array($last_known_status, array('revoked', 'expired', 'suspended', 'canceled', 'past_due', 'invalid'))) {
+                return array(
+                    'valid' => false,
+                    'status' => $last_known_status,
+                    'error' => 'API connection error',
+                    'api_error' => true
+                );
+            }
+
+            // Last known status was active - fail open for network/server errors only
+            return array(
+                'valid' => true,
+                'status' => $last_known_status,
+                'error' => 'API connection error - using cached status',
+                'api_error' => true
+            );
+        }
+
+        // Update local cache
+        if (isset($response['status'])) {
+            update_option('mrc_subscription_status', $response['status']);
+            update_option('mrc_last_validation', time());
+
+            // Handle inactive states
+            if (in_array($response['status'], array('revoked', 'expired', 'suspended', 'canceled'))) {
+                update_option('mrc_filtering_enabled', false);
+                delete_option('mrc_cached_masks');
+                delete_option('mrc_mask_configs');
+
+                error_log('Mr. Cloak: License validation failed - Status: ' . $response['status']);
+
+                return array(
+                    'valid' => false,
+                    'status' => $response['status'],
+                    'message' => $response['message'] ?? 'Subscription is not active'
+                );
+            }
+
+            return array(
+                'valid' => true,
+                'status' => $response['status'],
+                'message' => $response['message'] ?? 'License is valid'
+            );
+        }
+
+        return array(
+            'valid' => false,
+            'status' => 'unknown',
+            'error' => 'Invalid API response'
+        );
+    }
+
+    /**
+     * Check if license is valid (uses cache, validates every 5 minutes)
+     *
+     * @return bool True if license is valid
+     */
+    public function is_license_valid() {
+        $license_key = MRC_Security::decrypt(get_option('mrc_license_key'));
+
+        if (!$license_key) {
+            return false;
+        }
+
+        // Check if license was recently marked as revoked/invalid
+        $subscription_status = get_option('mrc_subscription_status', 'unknown');
+        if (in_array($subscription_status, array('revoked', 'expired', 'suspended', 'canceled'))) {
+            // Don't use cache for known invalid states - immediately return false
+            return false;
+        }
+
+        // Check cache first (6 hour cache) - only for active/trialing licenses
+        $cache_key = 'mrc_license_valid_' . md5($license_key);
+        $cached_status = get_transient($cache_key);
+
+        if ($cached_status !== false) {
+            return $cached_status === 'valid';
+        }
+
+        // Cache miss - validate with server
+        $validation = $this->validate_license();
+
+        if ($validation['valid']) {
+            // Cache as valid for 6 hours to reduce API load
+            set_transient($cache_key, 'valid', 21600);
+            return true;
+        } else {
+            // Don't cache invalid status - check again on next request
+            // This prevents "fail open" from being permanently cached
+            return false;
+        }
+    }
+
+    /**
      * Heartbeat check-in to refresh token and verify subscription
+     * (DEPRECATED - Now uses validate_license instead)
      *
      * @param string $access_token Current JWT token
      * @param string $domain Domain making the request
@@ -129,13 +287,8 @@ class MRC_API_Client {
      * @return array Response with new accessToken and status
      */
     public function heartbeat($access_token = null, $domain = null, $metrics = array()) {
-        if (!$access_token) {
-            $access_token = MRC_Security::get_access_token();
-        }
-
-        if (!$access_token) {
-            return array('error' => 'No access token available');
-        }
+        // Use new validation method instead of token-based heartbeat
+        return $this->validate_license();
 
         if (!$domain) {
             $domain = self::normalize_domain(parse_url(home_url(), PHP_URL_HOST));
@@ -164,11 +317,17 @@ class MRC_API_Client {
         $response = $this->make_request('POST', $url, $body);
 
         if (isset($response['status'])) {
+            // Always update subscription status first
+            update_option('mrc_subscription_status', $response['status']);
+            update_option('mrc_last_heartbeat', time());
+
             // Check for domain revocation
             if ($response['status'] === 'revoked') {
                 // Domain was revoked during active session!
                 update_option('mrc_filtering_enabled', false);
                 delete_option('mrc_access_token');
+                delete_option('mrc_cached_masks');
+                delete_option('mrc_mask_configs');
 
                 // Set persistent admin notice
                 set_transient('mrc_domain_revoked_notice', array(
@@ -180,17 +339,23 @@ class MRC_API_Client {
 
                 return $response;
             }
+
+            // Handle other status changes (expired, suspended, past_due)
+            if (in_array($response['status'], array('expired', 'suspended', 'past_due'))) {
+                update_option('mrc_filtering_enabled', false);
+                error_log('Mr. Cloak: Subscription status changed to ' . $response['status']);
+            }
         }
 
         if (isset($response['accessToken'])) {
             // Store new rolling token
             MRC_Security::store_access_token($response['accessToken']);
-            update_option('mrc_subscription_status', $response['status']);
             update_option('mrc_next_heartbeat', $response['nextCheckAt']);
-            update_option('mrc_last_heartbeat', time());
 
             // Handle subscription status changes
-            $this->handle_subscription_status($response['status'], $response['message']);
+            if (isset($response['status'])) {
+                $this->handle_subscription_status($response['status'], $response['message']);
+            }
         }
 
         return $response;
@@ -258,6 +423,42 @@ class MRC_API_Client {
         }
 
         return $response;
+    }
+
+    /**
+     * Fetch IP reputation data from Mr. Cloak backend
+     *
+     * @param string $ip_address IPv4 or IPv6 address
+     * @return array Reputation response with normalized structure
+     */
+    public function lookup_ip_reputation($ip_address) {
+        $defaults = array(
+            'success' => false,
+            'error' => 'disabled',
+            'is_proxy' => false,
+            'is_vpn' => false,
+            'is_tor' => false,
+            'is_crawler' => false,
+            'is_bot' => false,
+            'fraud_score' => 0,
+            'isp' => null,
+            'asn' => null,
+            'organization' => null,
+            'is_hosting' => false,
+            'country_code' => null,
+            'timezone' => null,
+            'mobile' => false,
+            'abuse_velocity' => 'none',
+            'recent_abuse' => false
+        );
+
+        // Validate IP; if invalid, still return a neutral structure with error
+        if (!filter_var($ip_address, FILTER_VALIDATE_IP)) {
+            $defaults['error'] = 'invalid_ip';
+        }
+
+        // No remote lookups are performed. Allow customization via filter.
+        return apply_filters('mrc_ip_reputation', $defaults, $ip_address);
     }
 
     /**
@@ -440,7 +641,12 @@ class MRC_API_Client {
                 $this->show_domain_not_whitelisted_notice($data);
             }
 
-            $this->track_api_failure($url, $data['error'] ?? 'HTTP ' . $status_code);
+            // Only track as "API failure" if it's a real connection/server issue
+            // Don't track 401/403 (authentication issues) as API failures
+            if (!in_array($status_code, array(401, 403))) {
+                $this->track_api_failure($url, $data['error'] ?? 'HTTP ' . $status_code);
+            }
+
             return array('error' => $data['error'] ?? 'Unknown error', 'status_code' => $status_code);
         }
 

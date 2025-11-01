@@ -1,0 +1,27 @@
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Env / logs / temp
+.env
+*.log
+*.tmp
+*.cache
+
+# Node/vendor (if present)
+node_modules/
+vendor/
+
+# Debug and test scripts (not for release)
+debug-*.php
+test-*.php
+update-api-url.php
+
+# Non-essential markdown docs (keep core ones)
+*.md
+!README.md
+!CHANGELOG.md
+!SECURITY.md
+

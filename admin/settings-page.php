@@ -13,6 +13,11 @@ if (isset($_POST['mrc_save_settings']) && check_admin_referer('mrc_settings')) {
     $ips = array_filter(array_map('trim', explode("\n", $ip_whitelist)));
     update_option('mrc_whitelisted_ips', $ips);
 
+    // Remove deprecated IPQualityScore API key if it exists
+    if (get_option('mrc_ipqs_api_key', null) !== null) {
+        delete_option('mrc_ipqs_api_key');
+    }
+
     echo '<div class="notice notice-success"><p>Settings saved successfully!</p></div>';
 }
 
@@ -90,6 +95,13 @@ $license_key = MRC_Security::decrypt(get_option('mrc_license_key'));
             </table>
         </div>
 
+        <!-- Advanced Bot Detection Section -->
+        <div class="mrc-settings-section" style="background: #fff; padding: 20px; margin: 20px 0; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+            <h2 style="margin-top: 0;">Advanced Bot Detection</h2>
+            <p>This plugin uses browser fingerprinting, headless checks, honeypots, and behavioral analysis. </p>
+            <p class="description">This keeps the plugin fully self‑contained with no external paid services.</p>
+        </div>
+
         <?php submit_button('Save Settings', 'primary large', 'mrc_save_settings'); ?>
     </form>
 
@@ -102,3 +114,5 @@ $license_key = MRC_Security::decrypt(get_option('mrc_license_key'));
     transition: box-shadow 0.2s;
 }
 </style>
+
+
