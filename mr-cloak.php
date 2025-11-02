@@ -32,6 +32,7 @@ if (is_admin()) {
     require_once MRC_PLUGIN_DIR . 'includes/class-admin.php';
     require_once MRC_PLUGIN_DIR . 'includes/class-notifications.php';
     require_once MRC_PLUGIN_DIR . 'includes/class-admin-bar.php';
+    require_once MRC_PLUGIN_DIR . 'includes/class-plugin-updater.php';
 }
 
 /**
@@ -82,6 +83,11 @@ class Mr_Cloak {
 
         // Add honeypot to footer
         add_action('wp_footer', array($this, 'add_honeypot'));
+
+        // Initialize auto-updater for admin users
+        if (is_admin()) {
+            new MRC_Plugin_Updater(__FILE__);
+        }
     }
 
     public function init_components() {

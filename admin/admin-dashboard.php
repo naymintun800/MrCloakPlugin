@@ -96,15 +96,6 @@ if (isset($_POST['mrc_toggle_mask']) && check_admin_referer('mrc_dashboard')) {
     echo '<div class="notice notice-success"><p>Mask ' . ($enabled ? 'enabled' : 'disabled') . ' successfully!</p></div>';
 }
 
-// Handle analytics reset
-if (isset($_POST['mrc_reset_analytics']) && check_admin_referer('mrc_dashboard')) {
-    delete_option('mrc_total_whitelisted_count');
-    delete_option('mrc_total_filtered_count');
-    delete_option('mrc_analytics_queue');
-
-    echo '<div class="notice notice-success"><p>Analytics counters reset successfully!</p></div>';
-}
-
 // Handle white page update
 if (isset($_POST['mrc_update_landing_page']) && check_admin_referer('mrc_dashboard')) {
     $mask_id = sanitize_text_field($_POST['mask_id']);
@@ -130,6 +121,86 @@ if (isset($_POST['mrc_update_landing_page']) && check_admin_referer('mrc_dashboa
     }
 
     echo '<div class="notice notice-success"><p>White page updated successfully!</p></div>';
+}
+
+// Handle reload masks
+if (isset($_POST['mrc_reload_masks']) && check_admin_referer('mrc_dashboard')) {
+    // Check rate limit (5-minute cooldown)
+    $last_reload = get_transient('mrc_last_reload_masks');
+    $cooldown_seconds = 300; // 5 minutes
+
+    if ($last_reload) {
+        $time_remaining = $cooldown_seconds - (time() - $last_reload);
+        if ($time_remaining > 0) {
+            $minutes = ceil($time_remaining / 60);
+            echo '<div class="notice notice-warning"><p>Please wait ' . $minutes . ' minute' . ($minutes > 1 ? 's' : '') . ' before reloading masks again.</p></div>';
+        } else {
+            // Cooldown expired, proceed with reload
+            $mask_manager = MRC_Mask_Manager::get_instance();
+            $success = $mask_manager->refresh_masks();
+
+            if ($success) {
+                set_transient('mrc_last_reload_masks', time(), $cooldown_seconds);
+                echo '<div class="notice notice-success"><p>Masks reloaded successfully!</p></div>';
+                echo '<script>window.location.reload();</script>';
+            } else {
+                echo '<div class="notice notice-error"><p>Failed to reload masks. Please check your license and try again.</p></div>';
+            }
+        }
+    } else {
+        // First time or cooldown expired
+        $mask_manager = MRC_Mask_Manager::get_instance();
+        $success = $mask_manager->refresh_masks();
+
+        if ($success) {
+            set_transient('mrc_last_reload_masks', time(), $cooldown_seconds);
+            echo '<div class="notice notice-success"><p>Masks reloaded successfully!</p></div>';
+            echo '<script>window.location.reload();</script>';
+        } else {
+            echo '<div class="notice notice-error"><p>Failed to reload masks. Please check your license and try again.</p></div>';
+        }
+    }
+}
+
+// Handle sync analytics
+if (isset($_POST['mrc_sync_analytics']) && check_admin_referer('mrc_dashboard')) {
+    // Check rate limit (5-minute cooldown)
+    $last_sync = get_transient('mrc_last_sync_analytics');
+    $cooldown_seconds = 300; // 5 minutes
+
+    if ($last_sync) {
+        $time_remaining = $cooldown_seconds - (time() - $last_sync);
+        if ($time_remaining > 0) {
+            $minutes = ceil($time_remaining / 60);
+            echo '<div class="notice notice-warning"><p>Please wait ' . $minutes . ' minute' . ($minutes > 1 ? 's' : '') . ' before syncing analytics again.</p></div>';
+        } else {
+            // Cooldown expired, proceed with sync
+            $analytics_queue = MRC_Analytics_Queue::get_instance();
+            $result = $analytics_queue->flush_queue();
+
+            set_transient('mrc_last_sync_analytics', time(), $cooldown_seconds);
+
+            if ($result && isset($result['success']) && $result['success']) {
+                $inserted = isset($result['inserted']) ? $result['inserted'] : 0;
+                echo '<div class="notice notice-success"><p>Analytics synced successfully! ' . $inserted . ' event' . ($inserted != 1 ? 's' : '') . ' sent.</p></div>';
+            } else {
+                echo '<div class="notice notice-error"><p>Failed to sync analytics. Please try again later.</p></div>';
+            }
+        }
+    } else {
+        // First time or cooldown expired
+        $analytics_queue = MRC_Analytics_Queue::get_instance();
+        $result = $analytics_queue->flush_queue();
+
+        set_transient('mrc_last_sync_analytics', time(), $cooldown_seconds);
+
+        if ($result && isset($result['success']) && $result['success']) {
+            $inserted = isset($result['inserted']) ? $result['inserted'] : 0;
+            echo '<div class="notice notice-success"><p>Analytics synced successfully! ' . $inserted . ' event' . ($inserted != 1 ? 's' : '') . ' sent.</p></div>';
+        } else {
+            echo '<div class="notice notice-error"><p>Failed to sync analytics. Please try again later.</p></div>';
+        }
+    }
 }
 
 // Validate license to ensure status is fresh when viewing dashboard
@@ -268,10 +339,36 @@ $posts = get_posts(array('posts_per_page' => 50));
             <p style="margin-top: 15px; text-align: center;">
                 <a href="https://mrcloak.com/dashboard/analytics" target="_blank" class="button">View Detailed Analytics</a>
             </p>
-            <form method="post" action="" style="margin-top: 10px; text-align: center;" onsubmit="return confirm('Are you sure you want to reset the analytics counters? This cannot be undone.');">
+            <?php
+            // Get pending analytics count
+            $analytics_queue = MRC_Analytics_Queue::get_instance();
+            $queue = get_option('mrc_analytics_queue', array());
+            $pending_count = is_array($queue) ? count($queue) : 0;
+            $last_sync = get_transient('mrc_last_sync_analytics');
+            $is_sync_disabled = $last_sync && (time() - $last_sync) < 300;
+            ?>
+            <form method="post" action="" style="margin-top: 10px; text-align: center;" id="mrc-sync-analytics-form">
                 <?php wp_nonce_field('mrc_dashboard'); ?>
-                <button type="submit" name="mrc_reset_analytics" class="button button-link" style="color: #dc3232; text-decoration: none; font-size: 12px;">
-                    Reset Counters
+                <button type="submit"
+                        name="mrc_sync_analytics"
+                        id="mrc-sync-analytics-btn"
+                        class="button button-secondary"
+                        <?php echo $is_sync_disabled ? 'disabled' : ''; ?>
+                        style="<?php echo $is_sync_disabled ? 'opacity: 0.5; cursor: not-allowed;' : ''; ?>">
+                    <?php
+                    if ($is_sync_disabled) {
+                        $time_remaining = 300 - (time() - $last_sync);
+                        $minutes = ceil($time_remaining / 60);
+                        echo 'Sync Analytics (' . $minutes . 'm)';
+                    } else {
+                        echo 'Sync Analytics Now';
+                    }
+                    ?>
+                    <?php if ($pending_count > 0): ?>
+                        <span class="mrc-badge" style="background: #dc3232; color: #fff; border-radius: 10px; padding: 2px 8px; font-size: 11px; margin-left: 5px;">
+                            <?php echo $pending_count; ?>
+                        </span>
+                    <?php endif; ?>
                 </button>
             </form>
         </div>
@@ -377,6 +474,30 @@ $posts = get_posts(array('posts_per_page' => 50));
 
             <p style="margin-top: 20px;">
                 <a href="https://mrcloak.com/dashboard/masks" target="_blank" class="button button-primary">Create New Mask</a>
+
+                <?php
+                $last_reload = get_transient('mrc_last_reload_masks');
+                $is_reload_disabled = $last_reload && (time() - $last_reload) < 300;
+                ?>
+                <form method="post" action="" style="display: inline; margin-left: 10px;" id="mrc-reload-masks-form">
+                    <?php wp_nonce_field('mrc_dashboard'); ?>
+                    <button type="submit"
+                            name="mrc_reload_masks"
+                            id="mrc-reload-masks-btn"
+                            class="button button-secondary"
+                            <?php echo $is_reload_disabled ? 'disabled' : ''; ?>
+                            style="<?php echo $is_reload_disabled ? 'opacity: 0.5; cursor: not-allowed;' : ''; ?>">
+                        <?php
+                        if ($is_reload_disabled) {
+                            $time_remaining = 300 - (time() - $last_reload);
+                            $minutes = ceil($time_remaining / 60);
+                            echo 'Reload Masks (' . $minutes . 'm)';
+                        } else {
+                            echo 'Reload Masks';
+                        }
+                        ?>
+                    </button>
+                </form>
             </p>
         <?php endif; ?>
     </div>
