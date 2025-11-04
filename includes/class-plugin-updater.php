@@ -24,6 +24,11 @@ class MRC_Plugin_Updater {
     private $plugin_slug;
 
     /**
+     * Normalized plugin directory slug
+     */
+    private $plugin_slug_dir;
+
+    /**
      * GitHub repository information
      */
     private $github_repo = 'naymintun800/MrCloakPlugin';
@@ -46,6 +51,11 @@ class MRC_Plugin_Updater {
     public function __construct($plugin_file) {
         $this->plugin_file = $plugin_file;
         $this->plugin_slug = plugin_basename($plugin_file);
+        $this->plugin_slug_dir = dirname($this->plugin_slug);
+
+        if ($this->plugin_slug_dir === '.' || $this->plugin_slug_dir === '') {
+            $this->plugin_slug_dir = basename($this->plugin_slug, '.php');
+        }
 
         // Hook into WordPress update system
         add_filter('pre_set_site_transient_update_plugins', array($this, 'check_for_update'));
@@ -62,12 +72,6 @@ class MRC_Plugin_Updater {
      */
     public function check_for_update($transient) {
         if (empty($transient->checked)) {
-            return $transient;
-        }
-
-        // Check if license is valid before checking for updates
-        if (!$this->is_license_valid()) {
-            error_log('Mr. Cloak: Update check skipped - invalid license');
             return $transient;
         }
 
@@ -104,7 +108,7 @@ class MRC_Plugin_Updater {
             error_log('Mr. Cloak: Update available! ' . $current_version . ' -> ' . $new_version);
 
             $plugin_data = array(
-                'slug' => dirname($this->plugin_slug),
+                'slug' => $this->plugin_slug_dir,
                 'plugin' => $this->plugin_slug,
                 'new_version' => $new_version,
                 'url' => $update_data['html_url'],
@@ -213,7 +217,22 @@ class MRC_Plugin_Updater {
             return $result;
         }
 
-        if (!isset($args->slug) || $args->slug !== dirname($this->plugin_slug)) {
+        $requested_slug = '';
+
+        if (isset($args->plugin)) {
+            $requested_slug = $args->plugin;
+        } elseif (isset($args->slug)) {
+            $requested_slug = $args->slug;
+        }
+
+        $valid_slugs = array_filter(array_unique(array(
+            $this->plugin_slug,
+            $this->plugin_slug_dir,
+            basename($this->plugin_slug, '.php'),
+            sanitize_title($this->plugin_slug_dir),
+        )));
+
+        if (!in_array($requested_slug, $valid_slugs, true)) {
             return $result;
         }
 
@@ -233,7 +252,7 @@ class MRC_Plugin_Updater {
 
         $plugin_info = array(
             'name' => 'Mr. Cloak',
-            'slug' => dirname($this->plugin_slug),
+            'slug' => $this->plugin_slug_dir,
             'version' => $update_data['version'],
             'author' => '<a href="https://mrcloak.com">Mr. Cloak</a>',
             'homepage' => 'https://mrcloak.com',
@@ -265,31 +284,7 @@ class MRC_Plugin_Updater {
             return $reply;
         }
 
-        // Validate license
-        if (!$this->is_license_valid()) {
-            return new WP_Error(
-                'mrc_license_invalid',
-                'Cannot update Mr. Cloak plugin: Your license is invalid or expired. Please activate a valid license first.'
-            );
-        }
-
         return $reply;
-    }
-
-    /**
-     * Check if license is valid
-     *
-     * @return bool
-     */
-    private function is_license_valid() {
-        $license_key = MRC_Security::decrypt(get_option('mrc_license_key'));
-
-        if (empty($license_key)) {
-            return false;
-        }
-
-        $api_client = MRC_API_Client::get_instance();
-        return $api_client->is_license_valid();
     }
 
     /**
