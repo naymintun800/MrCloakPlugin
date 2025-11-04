@@ -3,7 +3,7 @@
  * Plugin Name: Mr. Cloak
  * Plugin URI: https://mrcloak.com
  * Description: SaaS-powered traffic filtering and bot detection for affiliate marketers. Cloaks your campaigns from ad review bots.
- * Version: 3.0.4
+ * Version: 3.0.5
  * Author: Mr. Cloak
  * License: GPL v2 or later
  * Text Domain: mr-cloak
@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) {
 
 define('MRC_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('MRC_PLUGIN_URL', plugin_dir_url(__FILE__));
-define('MRC_VERSION', '3.0.4');
+define('MRC_VERSION', '3.0.5');
 
 // Require core classes
 require_once MRC_PLUGIN_DIR . 'includes/class-security.php';
