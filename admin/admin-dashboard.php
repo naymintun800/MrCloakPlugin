@@ -380,29 +380,7 @@ $posts = get_posts(array('posts_per_page' => 50));
             </form>
         </div>
 
-        <!-- Plugin Info Card -->
-        <div class="mrc-card" style="background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-            <h2 style="margin-top: 0;">Plugin Info</h2>
-            <p><strong>Version:</strong> <?php echo esc_html(MRC_VERSION); ?></p>
-            <p><strong>Auto-Updates:</strong>
-                <?php
-                $auto_update_plugins = get_site_option('auto_update_plugins', array());
-                $plugin_file = 'mr-cloak/mr-cloak.php';
-                if (in_array($plugin_file, $auto_update_plugins)) {
-                    echo '<span style="color: #46b450;">✓ Enabled</span>';
-                } else {
-                    echo '<span style="color: #999;">Disabled</span>';
-                }
-                ?>
-            </p>
-            <p style="font-size: 12px; color: #666;">
-                Auto-updates can be enabled in <a href="<?php echo admin_url('plugins.php'); ?>">Plugins</a> page.
-            </p>
-            <p>
-                <a href="<?php echo admin_url('update-core.php?force-check=1'); ?>" class="button">Check for Updates</a>
-                <a href="https://github.com/naymintun800/MrCloakPlugin/releases" target="_blank" class="button">View Releases</a>
-            </p>
-        </div>
+        
 
     </div>
 

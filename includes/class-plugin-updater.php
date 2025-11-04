@@ -163,9 +163,22 @@ class MRC_Plugin_Updater {
         $download_url = '';
         if (isset($data['assets']) && is_array($data['assets'])) {
             foreach ($data['assets'] as $asset) {
-                if ($asset['name'] === 'mr-cloak.zip') {
+                if (isset($asset['name'], $asset['browser_download_url']) && $asset['name'] === 'mr-cloak.zip') {
                     $download_url = $asset['browser_download_url'];
                     break;
+                }
+            }
+
+            if (empty($download_url)) {
+                foreach ($data['assets'] as $asset) {
+                    if (!isset($asset['name'], $asset['browser_download_url'])) {
+                        continue;
+                    }
+
+                    if (substr($asset['name'], -4) === '.zip') {
+                        $download_url = $asset['browser_download_url'];
+                        break;
+                    }
                 }
             }
         }
