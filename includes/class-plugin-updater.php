@@ -67,6 +67,7 @@ class MRC_Plugin_Updater {
 
         // Check if license is valid before checking for updates
         if (!$this->is_license_valid()) {
+            error_log('Mr. Cloak: Update check skipped - invalid license');
             return $transient;
         }
 
@@ -96,8 +97,12 @@ class MRC_Plugin_Updater {
         $current_version = MRC_VERSION;
         $new_version = isset($update_data['version']) ? $update_data['version'] : '';
 
+        error_log('Mr. Cloak: Update check - Current: ' . $current_version . ', Available: ' . $new_version);
+
         if (!empty($new_version) && version_compare($current_version, $new_version, '<')) {
             // New version available
+            error_log('Mr. Cloak: Update available! ' . $current_version . ' -> ' . $new_version);
+
             $plugin_data = array(
                 'slug' => dirname($this->plugin_slug),
                 'plugin' => $this->plugin_slug,
@@ -110,6 +115,8 @@ class MRC_Plugin_Updater {
             );
 
             $transient->response[$this->plugin_slug] = (object) $plugin_data;
+        } else {
+            error_log('Mr. Cloak: Plugin is up to date');
         }
 
         return $transient;
